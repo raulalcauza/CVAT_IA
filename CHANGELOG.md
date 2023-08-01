@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## \[Unreleased]
 ### Added
-
+- Multi-line text attributes supported (<https://github.com/opencv/cvat/pull/6458>)
 - \[SDK\] A `DeferredTqdmProgressReporter` class, which doesn't have glitchy output
   like `TqdmProgressReporter` in certain circumstances
   (<https://github.com/opencv/cvat/pull/6556>)
+- Updated helm deploy documentation (<https://github.com/opencv/cvat/pull/6476>)
+
 
 ### Changed
 
