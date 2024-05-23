@@ -146,6 +146,7 @@ interface State {
     activeLabelID: number | null;
     activeTracker: MLModel | null;
     convertMasksToPolygons: boolean;
+    selectedObjectType: ObjectType;
     trackedShapes: TrackedShape[];
     fetching: boolean;
     pointsReceived: boolean;
@@ -235,6 +236,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
         super(props);
         this.state = {
             convertMasksToPolygons: false,
+            selectedObjectType: ObjectType.SHAPE,
             activeInteractor: props.interactors.length ? props.interactors[0] : null,
             activeTracker: props.trackers.length ? props.trackers[0] : null,
             activeLabelID: props.labels.length ? props.labels[0].id as number : null,
@@ -593,7 +595,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
         const portals = !activeTracker ?
             [] :
             states
-                .filter((objectState) => objectState.objectType === 'track' && objectState.shapeType === 'rectangle')
+                .filter((objectState) => objectState.objectType === 'track' && (objectState.shapeType === 'rectangle' || objectState.shapeType === 'polygon'))
                 .map((objectState: any): React.ReactPortal | null => {
                     const { clientID } = objectState;
                     const selectorID = `#cvat-objects-sidebar-state-item-${clientID}`;
@@ -822,7 +824,10 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                             job: jobInstance.id,
                         }) as TrackerResults;
 
-                        response.shapes = response.shapes.map(trackedRectangleMapper);
+                        // If shape type is rectangle, keep same approach
+                        if (response.shapes[0].length === 4) {
+                            response.shapes = response.shapes.map(trackedRectangleMapper);
+                        }
                         for (let i = 0; i < trackableObjects.clientIDs.length; i++) {
                             const clientID = trackableObjects.clientIDs[i];
                             const shape = response.shapes[i];
@@ -859,7 +864,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
     }
 
     private async constructFromPoints(): Promise<void> {
-        const { convertMasksToPolygons } = this.state;
+        const { convertMasksToPolygons, selectedObjectType } = this.state;
         const {
             frame, labels, curZOrder, activeLabelID, createAnnotations,
         } = this.props;
@@ -867,7 +872,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
         if (convertMasksToPolygons) {
             const object = new core.classes.ObjectState({
                 frame,
-                objectType: ObjectType.SHAPE,
+                objectType: selectedObjectType,
                 source: core.enums.Source.SEMI_AUTO,
                 label: labels.find((label) => label.id === activeLabelID as number) as Label,
                 shapeType: ShapeType.POLYGON,
@@ -954,6 +959,29 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                     }}
                 />
                 <Text>Convert masks to polygons</Text>
+            </Row>
+        );
+    }
+
+    private renderObjectTypeBlock(): JSX.Element {
+        const { selectedObjectType } = this.state;
+        const objectTypes = Object.values(ObjectType);
+        objectTypes.splice(objectTypes.indexOf(ObjectType.TAG), 1);
+        return (
+            <Row className='cvat-interactors-setups-container'>
+                <Select
+                    value={selectedObjectType}
+                    onChange={(value: ObjectType) => {
+                        this.setState({ selectedObjectType: value });
+                    }}
+                >
+                    {objectTypes.map((type) => (
+                        <Select.Option key={type} value={type}>
+                            {type}
+                        </Select.Option>
+                    ))}
+                </Select>
+                <Text>Object Type</Text>
             </Row>
         );
     }
@@ -1346,6 +1374,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
     }
 
     private renderPopoverContent(): JSX.Element {
+        const { convertMasksToPolygons } = this.state;
         return (
             <div className='cvat-tools-control-popover-content'>
                 <Row justify='start'>
@@ -1358,6 +1387,7 @@ export class ToolsControlComponent extends React.PureComponent<Props, State> {
                 <Tabs type='card' tabBarGutter={8}>
                     <Tabs.TabPane key='interactors' tab='Interactors'>
                         {this.renderMasksConvertingBlock()}
+                        {convertMasksToPolygons ? this.renderObjectTypeBlock() : null}
                         {this.renderLabelBlock()}
                         {this.renderInteractorBlock()}
                     </Tabs.TabPane>
