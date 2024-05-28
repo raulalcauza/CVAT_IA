@@ -1,5 +1,5 @@
 # Copyright (C) 2018-2022 Intel Corporation
-# Copyright (C) 2022-2023 CVAT.ai Corporation
+# Copyright (C) 2022-2024 CVAT.ai Corporation
 #
 # SPDX-License-Identifier: MIT
 
@@ -14,8 +14,11 @@ from copy import copy
 from datetime import datetime
 from tempfile import NamedTemporaryFile
 from textwrap import dedent
+from contextlib import suppress
 
 import django_rq
+from rq.command import send_stop_job_command
+from rq.exceptions import InvalidJobOperation
 from attr.converters import to_bool
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -2965,6 +2968,7 @@ def _export_annotations(
         tasks_update = list(map(lambda db_task: timezone.localtime(db_task.updated_date), db_instance.tasks.all()))
         last_instance_update_time = max(tasks_update + [last_instance_update_time])
 
+
     timestamp = datetime.strftime(last_instance_update_time, "%Y_%m_%d_%H_%M_%S")
     is_annotation_file = rq_id.startswith('export:annotations')
 
@@ -2975,6 +2979,8 @@ def _export_annotations(
             # in case the server is configured with ONE_RUNNING_JOB_IN_QUEUE_PER_USER
             # we have to enqueue dependent jobs after canceling one
             rq_job.cancel(enqueue_dependents=settings.ONE_RUNNING_JOB_IN_QUEUE_PER_USER)
+            with suppress(InvalidJobOperation):
+                send_stop_job_command(rq_job.connection, rq_job.id)
             rq_job.delete()
         else:
             if rq_job.is_finished:
