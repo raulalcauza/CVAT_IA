@@ -37,9 +37,10 @@ from cvat.apps.engine.serializers import (AttributeSerializer, DataSerializer,
     ProjectReadSerializer, ProjectFileSerializer, TaskFileSerializer, RqIdSerializer)
 from cvat.apps.engine.utils import (
     av_scan_paths, process_failed_job,
-    get_rq_job_meta, get_import_rq_id, import_resource_with_clean_up_after,
+    get_rq_job_meta, import_resource_with_clean_up_after,
     sendfile, define_dependent_job, get_rq_lock_by_user, build_backup_file_name,
 )
+from cvat.apps.engine.rq_job_handler import RQIdManager, RQJobMetaField
 from cvat.apps.engine.models import (
     StorageChoice, StorageMethodChoice, DataChoice, Task, Project, Location)
 from cvat.apps.engine.task import JobFileMapping, _create_thread
@@ -953,7 +954,7 @@ def export(db_instance, request, queue_name):
     )
 
     queue = django_rq.get_queue(queue_name)
-    rq_id = f"export:{obj_type}.id{db_instance.pk}-by-{request.user}"
+    rq_id = RQIdManager.build('export', obj_type, db_instance.pk, subresource='backup', user_id=request.user.id)
     rq_job = queue.fetch_job(rq_id)
 
     last_instance_update_time = timezone.localtime(db_instance.updated_date)
@@ -961,7 +962,7 @@ def export(db_instance, request, queue_name):
     location = location_conf.get('location')
 
     if rq_job:
-        rq_request = rq_job.meta.get('request', None)
+        rq_request = rq_job.meta.get(RQJobMetaField.REQUEST, None)
         request_time = rq_request.get("timestamp", None) if rq_request else None
         if request_time is None or request_time < last_instance_update_time:
             # in case the server is configured with ONE_RUNNING_JOB_IN_QUEUE_PER_USER
@@ -999,7 +1000,7 @@ def export(db_instance, request, queue_name):
                 else:
                     raise NotImplementedError()
             elif rq_job.is_failed:
-                exc_info = rq_job.meta.get('formatted_exception', str(rq_job.exc_info))
+                exc_info = rq_job.meta.get(RQJobMetaField.FORMATTED_EXCEPTION, str(rq_job.exc_info))
                 rq_job.delete()
                 return Response(exc_info,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1011,6 +1012,7 @@ def export(db_instance, request, queue_name):
 
     func = _create_backup if location == Location.LOCAL else export_resource_to_cloud_storage
     func_args = (db_instance, Exporter, '{}_backup.zip'.format(obj_type), logger, cache_ttl)
+    save_result_url = True
 
     if location == Location.CLOUD_STORAGE:
         try:
@@ -1029,24 +1031,28 @@ def export(db_instance, request, queue_name):
             timestamp=timestamp,
         )
         func_args = (db_storage, filename, filename_pattern, _create_backup) + func_args
+        save_result_url = False
 
     with get_rq_lock_by_user(queue, user_id):
         queue.enqueue_call(
             func=func,
             args=func_args,
             job_id=rq_id,
-            meta=get_rq_job_meta(request=request, db_obj=db_instance),
+            meta=get_rq_job_meta(request=request, db_obj=db_instance, include_result_url=save_result_url),
             depends_on=define_dependent_job(queue, user_id, rq_id=rq_id),
             result_ttl=ttl,
             failure_ttl=ttl,
         )
-    return Response(status=status.HTTP_202_ACCEPTED)
+    serializer = RqIdSerializer(data={'rq_id': rq_id})
+    serializer.is_valid(raise_exception=True)
+
+    return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
 
 
 def _import(importer, request, queue, rq_id, Serializer, file_field_name, location_conf, filename=None):
     rq_job = queue.fetch_job(rq_id)
 
-    if (user_id_from_meta := getattr(rq_job, 'meta', {}).get('user', {}).get('id')) and user_id_from_meta != request.user.id:
+    if (user_id_from_meta := getattr(rq_job, 'meta', {}).get(RQJobMetaField.USER, {}).get('id')) and user_id_from_meta != request.user.id:
         return Response(status=status.HTTP_403_FORBIDDEN)
 
     if not rq_job:
@@ -1135,7 +1141,7 @@ def import_project(request, queue_name, filename=None):
     if 'rq_id' in request.data:
         rq_id = request.data['rq_id']
     else:
-        rq_id = get_import_rq_id('project', uuid.uuid4(), 'backup', request.user)
+        rq_id = RQIdManager.build('import', 'project', uuid.uuid4(), subresource='backup')
     Serializer = ProjectFileSerializer
     file_field_name = 'project_file'
 
@@ -1158,8 +1164,7 @@ def import_project(request, queue_name, filename=None):
     )
 
 def import_task(request, queue_name, filename=None):
-    rq_id = request.data.get('rq_id',  get_import_rq_id('task', uuid.uuid4(), 'backup', request.user))
-
+    rq_id = request.data.get('rq_id', RQIdManager.build('import', 'task', uuid.uuid4(), subresource='backup'))
     Serializer = TaskFileSerializer
     file_field_name = 'task_file'
 

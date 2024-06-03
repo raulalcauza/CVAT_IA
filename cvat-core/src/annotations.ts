@@ -1,5 +1,5 @@
 // Copyright (C) 2019-2022 Intel Corporation
-// Copyright (C) 2022-2023 CVAT.ai Corporation
+// Copyright (C) 2022-2024 CVAT.ai Corporation
 //
 // SPDX-License-Identifier: MIT
 
@@ -161,20 +161,20 @@ export function importDataset(
     file: File | string,
     options: {
         convMaskToPoly?: boolean,
-        updateStatusCallback?: (s: string, n: number) => void,
+        uploadStatusCallback?: (s: string, n: number) => void,
     } = {},
-): Promise<void> {
-    const updateStatusCallback = options.updateStatusCallback || (() => {});
+): Promise<string> {
+    const uploadStatusCallback = options.uploadStatusCallback || (() => {});
     const convMaskToPoly = 'convMaskToPoly' in options ? options.convMaskToPoly : true;
     const adjustedOptions = {
-        updateStatusCallback,
+        uploadStatusCallback,
         convMaskToPoly,
     };
 
     if (!(instance instanceof Project || instance instanceof Task || instance instanceof Job)) {
         throw new ArgumentError('Instance must be a Project || Task || Job instance');
     }
-    if (!(typeof updateStatusCallback === 'function')) {
+    if (!(typeof uploadStatusCallback === 'function')) {
         throw new ArgumentError('Callback must be a function');
     }
     if (!(typeof convMaskToPoly === 'boolean')) {

@@ -141,7 +141,10 @@ context('Tests source & target storage for backups.', () => {
                 { location: 'Local' },
                 false,
             );
-            cy.waitForDownload();
+            cy.downloadExport().then((file) => {
+                cy.verifyDownload(file);
+            });
+            cy.goBack();
         });
 
         it('Export project to default minio bucket', () => {

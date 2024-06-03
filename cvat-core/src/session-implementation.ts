@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: MIT
 
 import { omit } from 'lodash';
+import config from './config';
 import { ArgumentError } from './exceptions';
 import { HistoryActions, JobType, RQStatus } from './enums';
 import { Storage } from './storage';
@@ -30,6 +31,8 @@ import {
     importDataset, exportDataset, clearCache, getHistory,
 } from './annotations';
 import AnnotationGuide from './guide';
+import requestsManager from './requests-manager';
+import { Request } from './request';
 
 // must be called with task/job context
 async function deleteFrameWrapper(jobID, frame): Promise<void> {
@@ -313,8 +316,8 @@ export function implementJob(Job) {
         file: File | string,
         options?: { convMaskToPoly?: boolean },
     ) {
-        const result = await importDataset(this, format, useDefaultLocation, sourceStorage, file, options);
-        return result;
+        const rqID = await importDataset(this, format, useDefaultLocation, sourceStorage, file, options);
+        return rqID;
     };
 
     Job.prototype.annotations.import.implementation = function (data) {
@@ -332,8 +335,8 @@ export function implementJob(Job) {
         targetStorage: Storage,
         customName?: string,
     ) {
-        const result = await exportDataset(this, format, saveImages, useDefaultSettings, targetStorage, customName);
-        return result;
+        const rqID = await exportDataset(this, format, saveImages, useDefaultSettings, targetStorage, customName);
+        return rqID;
     };
 
     Job.prototype.actions.undo.implementation = async function (count) {
@@ -399,7 +402,7 @@ export function implementTask(Task) {
         return this;
     };
 
-    Task.prototype.save.implementation = async function (onUpdate) {
+    Task.prototype.save.implementation = async function (options) {
         if (typeof this.id !== 'undefined') {
             // If the task has been already created, we update it
             const taskData = this._updateTrigger.getUpdated(this, {
@@ -491,7 +494,22 @@ export function implementTask(Task) {
             ...(typeof this.cloudStorageId !== 'undefined' ? { cloud_storage_id: this.cloudStorageId } : {}),
         };
 
-        const task = await serverProxy.tasks.create(taskSpec, taskDataSpec, onUpdate);
+        const { taskID, rqID } = await serverProxy.tasks.create(
+            taskSpec,
+            taskDataSpec,
+            options?.requestStatusCallback || (() => {}),
+        );
+
+        await requestsManager.listen(rqID, {
+            callback: async (request: Request) => {
+                options?.requestStatusCallback(request);
+                if (request.status === RQStatus.FAILED) {
+                    await serverProxy.tasks.delete(taskID, config.organization.organizationSlug || null);
+                }
+            },
+        });
+
+        const [task] = await serverProxy.tasks.get({ id: taskID });
         const labels = await serverProxy.labels.get({ task_id: task.id });
         const jobs = await serverProxy.jobs.get({
             filter: JSON.stringify({ and: [{ '==': [{ var: 'task_id' }, task.id] }] }),
@@ -506,10 +524,12 @@ export function implementTask(Task) {
     };
 
     Task.prototype.listenToCreate.implementation = async function (
-        onUpdate: (state: RQStatus, progress: number, message: string) => void = () => {},
+        rqID,
+        options,
     ): Promise<TaskClass> {
         if (Number.isInteger(this.id) && this.size === 0) {
-            const serializedTask = await serverProxy.tasks.listenToCreate(this.id, onUpdate);
+            const request = await requestsManager.listen(rqID, options);
+            const [serializedTask] = await serverProxy.tasks.get({ id: request.operation.taskID });
             return new Task(omit(serializedTask, ['labels', 'jobs']));
         }
 
@@ -531,14 +551,16 @@ export function implementTask(Task) {
         useDefaultSettings: boolean,
         fileName?: string,
     ) {
-        const result = await serverProxy.tasks.backup(this.id, targetStorage, useDefaultSettings, fileName);
-        return result;
+        const rqID = await serverProxy.tasks.backup(this.id, targetStorage, useDefaultSettings, fileName);
+        return rqID;
     };
 
-    Task.restore.implementation = async function (storage: Storage, file: File | string) {
-        // eslint-disable-next-line no-unsanitized/method
-        const result = await serverProxy.tasks.restore(storage, file);
-        return result;
+    Task.restore.implementation = async function (
+        storage: Storage,
+        file: File | string,
+    ) {
+        const rqID = await serverProxy.tasks.restore(storage, file);
+        return rqID;
     };
 
     Task.prototype.frames.get.implementation = async function (frame, isPlaying, step) {
@@ -765,8 +787,8 @@ export function implementTask(Task) {
         file: File | string,
         options?: { convMaskToPoly?: boolean },
     ) {
-        const result = await importDataset(this, format, useDefaultLocation, sourceStorage, file, options);
-        return result;
+        const rqID = await importDataset(this, format, useDefaultLocation, sourceStorage, file, options);
+        return rqID;
     };
 
     Task.prototype.annotations.import.implementation = function (data) {
@@ -784,8 +806,8 @@ export function implementTask(Task) {
         targetStorage: Storage,
         customName?: string,
     ) {
-        const result = await exportDataset(this, format, saveImages, useDefaultSettings, targetStorage, customName);
-        return result;
+        const rqID = await exportDataset(this, format, saveImages, useDefaultSettings, targetStorage, customName);
+        return rqID;
     };
 
     Task.prototype.actions.undo.implementation = async function (count) {

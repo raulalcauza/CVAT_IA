@@ -6,7 +6,7 @@
 import _ from 'lodash';
 import {
     ChunkType, DimensionType, JobStage,
-    JobState, JobType, RQStatus, StorageLocation, TaskMode, TaskStatus,
+    JobState, JobType, StorageLocation, TaskMode, TaskStatus,
 } from './enums';
 import { Storage } from './storage';
 
@@ -19,6 +19,7 @@ import { SerializedJob, SerializedLabel, SerializedTask } from './server-respons
 import AnnotationGuide from './guide';
 import { FrameData } from './frames';
 import Statistics from './statistics';
+import { Request } from './request';
 import logger from './logger';
 
 function buildDuplicatedAPI(prototype) {
@@ -1065,15 +1066,20 @@ export class Task extends Session {
         return result;
     }
 
-    async save(onUpdate = () => {}): Promise<Task> {
-        const result = await PluginRegistry.apiWrapper.call(this, Task.prototype.save, onUpdate);
+    async save(
+        options?: {
+            requestStatusCallback?: (request: Request) => void,
+        },
+    ): Promise<Task> {
+        const result = await PluginRegistry.apiWrapper.call(this, Task.prototype.save, options);
         return result;
     }
 
     async listenToCreate(
-        onUpdate: (state: RQStatus, progress: number, message: string) => void = () => {},
+        rqID,
+        options,
     ): Promise<Task> {
-        const result = await PluginRegistry.apiWrapper.call(this, Task.prototype.listenToCreate, onUpdate);
+        const result = await PluginRegistry.apiWrapper.call(this, Task.prototype.listenToCreate, rqID, options);
         return result;
     }
 
@@ -1082,7 +1088,11 @@ export class Task extends Session {
         return result;
     }
 
-    async backup(targetStorage: Storage, useDefaultSettings: boolean, fileName?: string) {
+    async backup(
+        targetStorage: Storage,
+        useDefaultSettings: boolean,
+        fileName?: string,
+    ) {
         const result = await PluginRegistry.apiWrapper.call(
             this,
             Task.prototype.backup,
@@ -1098,7 +1108,10 @@ export class Task extends Session {
         return result;
     }
 
-    static async restore(storage: Storage, file: File | string) {
+    static async restore(
+        storage: Storage,
+        file: File | string,
+    ) {
         const result = await PluginRegistry.apiWrapper.call(this, Task.restore, storage, file);
         return result;
     }

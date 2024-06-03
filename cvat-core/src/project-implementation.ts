@@ -1,5 +1,5 @@
 // Copyright (C) 2021-2022 Intel Corporation
-// Copyright (C) 2022-2023 CVAT.ai Corporation
+// Copyright (C) 2022-2024 CVAT.ai Corporation
 //
 // SPDX-License-Identifier: MIT
 
@@ -97,8 +97,8 @@ export default function implementProject(projectClass) {
         targetStorage: Storage,
         customName?: string,
     ) {
-        const result = exportDataset(this, format, saveImages, useDefaultSettings, targetStorage, customName);
-        return result;
+        const rqID = await exportDataset(this, format, saveImages, useDefaultSettings, targetStorage, customName);
+        return rqID;
     };
     projectClass.prototype.annotations.importDataset.implementation = async function (
         format: string,
@@ -107,10 +107,11 @@ export default function implementProject(projectClass) {
         file: File | string,
         options?: {
             convMaskToPoly?: boolean,
-            updateStatusCallback?: (s: string, n: number) => void,
+            uploadStatusCallback?: (s: string, n: number) => void,
         },
     ) {
-        return importDataset(this, format, useDefaultSettings, sourceStorage, file, options);
+        const rqID = await importDataset(this, format, useDefaultSettings, sourceStorage, file, options);
+        return rqID;
     };
 
     projectClass.prototype.backup.implementation = async function (
@@ -118,13 +119,16 @@ export default function implementProject(projectClass) {
         useDefaultSettings: boolean,
         fileName?: string,
     ) {
-        const result = await serverProxy.projects.backup(this.id, targetStorage, useDefaultSettings, fileName);
-        return result;
+        const rqID = await serverProxy.projects.backup(this.id, targetStorage, useDefaultSettings, fileName);
+        return rqID;
     };
 
-    projectClass.restore.implementation = async function (storage: Storage, file: File | string) {
-        const result = await serverProxy.projects.restore(storage, file);
-        return result;
+    projectClass.restore.implementation = async function (
+        storage: Storage,
+        file: File | string,
+    ) {
+        const rqID = await serverProxy.projects.restore(storage, file);
+        return rqID;
     };
 
     projectClass.prototype.guide.implementation = async function guide() {

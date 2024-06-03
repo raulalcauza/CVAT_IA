@@ -1,5 +1,5 @@
 // Copyright (C) 2019-2022 Intel Corporation
-// Copyright (C) 2022-2023 CVAT.ai Corporation
+// Copyright (C) 2022-2024 CVAT.ai Corporation
 //
 // SPDX-License-Identifier: MIT
 
@@ -221,7 +221,11 @@ export default class Project {
         return result;
     }
 
-    async backup(targetStorage: Storage, useDefaultSettings: boolean, fileName?: string) {
+    async backup(
+        targetStorage: Storage,
+        useDefaultSettings: boolean,
+        fileName?: string,
+    ) {
         const result = await PluginRegistry.apiWrapper.call(
             this,
             Project.prototype.backup,
@@ -232,7 +236,10 @@ export default class Project {
         return result;
     }
 
-    static async restore(storage: Storage, file: File | string) {
+    static async restore(
+        storage: Storage,
+        file: File | string,
+    ) {
         const result = await PluginRegistry.apiWrapper.call(this, Project.restore, storage, file);
         return result;
     }
@@ -273,7 +280,7 @@ Object.defineProperties(
                     file: File | string,
                     options?: {
                         convMaskToPoly?: boolean,
-                        updateStatusCallback?: (s: string, n: number) => void,
+                        uploadStatusCallback?: (s: string, n: number) => void,
                     },
                 ) {
                     const result = await PluginRegistry.apiWrapper.call(
