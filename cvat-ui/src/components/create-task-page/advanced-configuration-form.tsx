@@ -92,7 +92,7 @@ function validateURL(_: RuleObject, value: string): Promise<void> {
     return Promise.resolve();
 }
 
-const isInteger = ({ min, max }: { min?: number; max?: number }) => (
+const isInteger = ({ min, max, toBeSkipped }: { min?: number; max?: number; toBeSkipped?: number }) => (
     _: RuleObject,
     value?: number | string,
 ): Promise<void> => {
@@ -111,6 +111,10 @@ const isInteger = ({ min, max }: { min?: number; max?: number }) => (
 
     if (typeof max !== 'undefined' && intValue > max) {
         return Promise.reject(new Error(`Value must be less than ${max}`));
+    }
+
+    if (typeof toBeSkipped !== 'undefined' && intValue === toBeSkipped) {
+        return Promise.reject(new Error(`Value shouldn't be equal to ${toBeSkipped}`));
     }
 
     return Promise.resolve();
@@ -325,6 +329,18 @@ class AdvancedConfigurationForm extends React.PureComponent<Props> {
         );
     }
 
+    private renderConsensusJobPerSegment(): JSX.Element {
+        return (
+            <Form.Item
+                label='Consensus Job Per Segment'
+                name='consensusJobPerSegment'
+                rules={[{ validator: isInteger({ min: 0, max: 10, toBeSkipped: 1 }) }]}
+            >
+                <Input size='large' type='number' min={0} step={1} />
+            </Form.Item>
+        );
+    }
+
     private renderBugTracker(): JSX.Element {
         return (
             <Form.Item
@@ -482,6 +498,9 @@ class AdvancedConfigurationForm extends React.PureComponent<Props> {
 
                 <Row justify='start'>
                     <Col span={7}>{this.renderChunkSize()}</Col>
+                    <Col span={12} offset={1}>
+                        {this.renderConsensusJobPerSegment()}
+                    </Col>
                 </Row>
 
                 <Row>
