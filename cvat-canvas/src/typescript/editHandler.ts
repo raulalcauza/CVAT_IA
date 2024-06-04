@@ -16,6 +16,7 @@ export interface EditHandler {
     transform(geometry: Geometry): void;
     configurate(configuration: Configuration): void;
     cancel(): void;
+    enabled: boolean;
 }
 
 export class EditHandlerImpl implements EditHandler {
@@ -31,9 +32,9 @@ export class EditHandlerImpl implements EditHandler {
     private autobordersEnabled: boolean;
     private intelligentCutEnabled: boolean;
     private outlinedBorders: string;
+    private isEditing: boolean;
 
     private setupTrailingPoint(circle: SVG.Circle): void {
-        const head = this.editedShape.attr('points').split(' ').slice(0, this.editData.pointID).join(' ');
         circle.on('mouseenter', (): void => {
             circle.attr({
                 'stroke-width': consts.POINTS_SELECTED_STROKE_WIDTH / this.geometry.scale,
@@ -46,22 +47,11 @@ export class EditHandlerImpl implements EditHandler {
             });
         });
 
-        const minimumPoints = 2;
         circle.on('mousedown', (e: MouseEvent): void => {
             if (e.button !== 0) return;
-            const { offset } = this.geometry;
-            const stringifiedPoints = `${head} ${this.editLine.node.getAttribute('points').slice(0, -2)}`;
-            const points = pointsToNumberArray(stringifiedPoints)
-                .slice(0, -2)
-                .map((coord: number): number => coord - offset);
-
-            if (points.length >= minimumPoints * 2) {
-                const { state } = this.editData;
-                this.edit({
-                    enabled: false,
-                });
-                this.onEditDone(state, points);
-            }
+            this.edit({
+                enabled: false,
+            });
         });
     }
 
@@ -380,6 +370,19 @@ export class EditHandlerImpl implements EditHandler {
     }
 
     private closeEditing(): void {
+        if (this.isEditing) {
+            const { offset } = this.geometry;
+            const head = this.editedShape.attr('points').split(' ').slice(0, this.editData.pointID).join(' ');
+            const stringifiedPoints = `${head} ${this.editLine.node.getAttribute('points').slice(0, -2)}`;
+            const points = pointsToNumberArray(stringifiedPoints)
+                .slice(0, -2)
+                .map((coord: number): number => coord - offset);
+            if (points.length >= 2 * 2) { // minimumPoints * 2
+                const { state } = this.editData;
+                this.onEditDone(state, points);
+            }
+        }
+        this.isEditing = false;
         this.release();
     }
 
@@ -400,12 +403,14 @@ export class EditHandlerImpl implements EditHandler {
         this.editLine = null;
         this.geometry = null;
         this.clones = [];
+        this.isEditing = false;
     }
 
     public edit(editData: any): void {
         if (editData.enabled) {
             if (editData.state.shapeType !== 'rectangle') {
                 this.editData = editData;
+                this.isEditing = true;
                 this.initEditing();
             } else {
                 this.cancel();
@@ -419,6 +424,10 @@ export class EditHandlerImpl implements EditHandler {
     public cancel(): void {
         this.release();
         this.onEditDone(null, null);
+    }
+
+    get enabled(): boolean {
+        return this.isEditing;
     }
 
     public configurate(configuration: Configuration): void {
